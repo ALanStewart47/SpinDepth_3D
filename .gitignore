@@ -1,0 +1,14 @@
+/001_Reference/1，标准例程-HAL库版本
+/001_Reference/3，原理图
+/001_Reference/OA-5_6(VL53L7_8CH)
+
+# Keil MDK：F7 重新生成的中间文件和链接产物
+002_Firmware/**/MDK-ARM/Objects/
+002_Firmware/**/MDK-ARM/Listings/
+002_Firmware/**/MDK-ARM/*.lst
+002_Firmware/**/MDK-ARM/build_*.log
+002_Firmware/**/MDK-ARM/*.uvguix.*
+002_Firmware/**/MDK-ARM/*.scvd
+002_Firmware/**/MDK-ARM/DebugConfig/
+002_Firmware/**/MDK-ARM/RTE/
+002_Firmware/**/MDK-ARM/.vscode/
