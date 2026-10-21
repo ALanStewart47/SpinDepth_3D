@@ -8,6 +8,9 @@ import time
 import numpy as np
 
 
+MAX_DISTANCE_MM = 2000
+
+
 @dataclass
 class Frame:
     sequence: int
@@ -19,7 +22,8 @@ class Frame:
 
     @property
     def valid(self):
-        return (self.targets > 0) & np.isin(self.status, (5, 9))
+        return ((self.targets > 0) & np.isin(self.status, (5, 9))
+                & (self.distance_mm >= 0) & (self.distance_mm <= MAX_DISTANCE_MM))
 
 
 class FrameParser:

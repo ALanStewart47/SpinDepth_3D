@@ -10,6 +10,12 @@
 #define TOF_DEMO_ROWS 8U
 #define TOF_DEMO_ZONES VL53LMZ_RESOLUTION_8X8
 #define TOF_DEMO_FREQUENCY_HZ 5U
+#define TOF_DEMO_INTEGRATION_MS 40U
+
+/* 8x8 uses four integrations; leave room for overhead within each frame. */
+#if (4U * TOF_DEMO_INTEGRATION_MS + 1U) * TOF_DEMO_FREQUENCY_HZ >= 1000U
+#error "Integration time exceeds the 8x8 frame budget"
+#endif
 
 static VL53LMZ_Configuration tof_device;
 static VL53LMZ_ResultsData tof_results;
@@ -78,13 +84,30 @@ uint8_t tof_demo_init(void)
   {
     return report_error("set-frequency", status);
   }
+  status = vl53lmz_set_ranging_mode(&tof_device, VL53LMZ_RANGING_MODE_AUTONOMOUS);
+  if (status != VL53LMZ_STATUS_OK)
+  {
+    return report_error("set-mode", status);
+  }
+  status = vl53lmz_set_integration_time_ms(&tof_device, TOF_DEMO_INTEGRATION_MS);
+  if (status != VL53LMZ_STATUS_OK)
+  {
+    return report_error("set-integration", status);
+  }
+  /* Strongest-first reduces multipath false targets with a >100 ms frame budget. */
+  status = vl53lmz_set_target_order(&tof_device, VL53LMZ_TARGET_ORDER_STRONGEST);
+  if (status != VL53LMZ_STATUS_OK)
+  {
+    return report_error("set-target-order", status);
+  }
   status = vl53lmz_start_ranging(&tof_device);
   if (status != VL53LMZ_STATUS_OK)
   {
     return report_error("start-ranging", status);
   }
 
-  logf_uart("Ranging started: 8x8 @ 5 Hz\r\n");
+  logf_uart("Ranging started: 8x8 @ %u Hz, autonomous %u ms, strongest target\r\n",
+            TOF_DEMO_FREQUENCY_HZ, TOF_DEMO_INTEGRATION_MS);
   return VL53LMZ_STATUS_OK;
 }
 

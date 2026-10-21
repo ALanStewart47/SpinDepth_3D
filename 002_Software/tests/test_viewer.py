@@ -5,7 +5,7 @@ from unittest.mock import patch
 import numpy as np
 import serial
 
-from main import preview_data
+from main import display_data, preview_data, surface_triangles
 from protocol import FrameParser
 from serial_link import SerialReader
 from samples import wire_frame
@@ -98,13 +98,68 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(points.shape, (0, 3))
         self.assertEqual(colors.shape, (0, 3))
 
-    def test_color_limit_does_not_remove_valid_points(self):
+    def test_outside_test_range_has_no_points_but_preserves_raw_distance(self):
         distance = np.full((8, 8), 2000)
         frame = FrameParser().feed(wire_frame(distance=distance))[0]
+        points, colors, grid = preview_data(frame)
+        self.assertEqual(points.shape, (0, 3))
+        self.assertEqual(colors.shape, (0, 3))
+        np.testing.assert_allclose(grid, np.broadcast_to([0.22, 0.24, 0.27], grid.shape))
+        np.testing.assert_array_equal(frame.distance_mm, distance)
+
+    def test_one_metre_boundary_and_negative_distance(self):
+        distance = np.full((8, 8), 500)
+        distance[0] = [-1, 0, 1, 999, 1000, 1001, 1000, 500]
+        status = np.full((8, 8), 5)
+        status[0, 4], status[0, 6] = 9, 255
+        targets = np.ones((8, 8), dtype=int)
+        targets[0, 7] = 0
+        frame = FrameParser().feed(wire_frame(distance=distance, status=status, targets=targets))[0]
+        np.testing.assert_array_equal(frame.valid[0], [False, True, True, True, True, False, False, False])
         points, colors, _ = preview_data(frame)
-        self.assertEqual(len(points), 64)
-        self.assertEqual(points[0, 2], -20)
-        np.testing.assert_allclose(colors[0], [0.12, 0.38, 0.68])
+        self.assertEqual(len(points), 60)
+        self.assertEqual(points[3, 2], -10)
+        np.testing.assert_allclose(colors[3], [0.12, 0.38, 0.68])
+
+
+class SurfaceTests(unittest.TestCase):
+    def test_full_grid_connects_neighbors_with_upward_faces(self):
+        triangles = surface_triangles(np.ones((8, 8), dtype=bool))
+        self.assertEqual(triangles.shape, (98, 3))
+        frame = FrameParser().feed(wire_frame())[0]
+        points, _, _ = preview_data(frame)
+        faces = points[triangles]
+        normals = np.cross(faces[:, 1] - faces[:, 0], faces[:, 2] - faces[:, 0])
+        self.assertTrue((normals[:, 2] > 0).all())
+
+    def test_missing_row_is_not_bridged_and_indices_match_compacted_points(self):
+        valid = np.ones((8, 8), dtype=bool)
+        valid[3, :] = False
+        triangles = surface_triangles(valid)
+        self.assertEqual(len(triangles), 70)
+        rows, cols = np.where(valid)
+        self.assertLess(triangles.max(), valid.sum())
+        self.assertGreaterEqual(triangles.min(), 0)
+        self.assertTrue((np.ptp(rows[triangles], axis=1) == 1).all())
+        self.assertTrue((np.ptp(cols[triangles], axis=1) == 1).all())
+
+    def test_empty_and_isolated_points_have_no_faces(self):
+        for valid in (np.zeros((8, 8), dtype=bool), np.eye(8, dtype=bool)):
+            self.assertEqual(surface_triangles(valid).shape, (0, 3))
+
+    def test_relative_surface_uses_current_and_reference_validity(self):
+        targets = np.ones((8, 8), dtype=int)
+        targets[0, 0] = 0
+        frame = FrameParser().feed(wire_frame(targets=targets))[0]
+        reference = np.full((8, 8), 400.0)
+        reference[7, 7] = np.nan
+        _, valid = display_data(frame, reference)
+        points, _, _ = preview_data(frame, reference)
+        faces = points[surface_triangles(valid)]
+        self.assertTrue(np.isfinite(faces).all())
+        self.assertEqual(len(points), 62)
+        self.assertFalse(np.any(np.all(faces == [-3.5, 3.5, 1], axis=2)))
+        self.assertFalse(np.any(np.all(faces == [3.5, -3.5, 1], axis=2)))
 
 
 class FakeSerial:
